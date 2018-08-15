@@ -20,8 +20,10 @@ import gov.hhs.usas.rest.model.CognosReport;
 import gov.hhs.usas.rest.model.Prompt;
 import gov.hhs.usas.rest.model.USASResponse;
 import gov.hhs.usas.rest.report.model.Appointment.USAStaffingAppointmentResult;
+import gov.hhs.usas.rest.report.model.CdcRecruitment.CdcRecruitmentResult;
 import gov.hhs.usas.rest.report.model.Recruitment.USAStaffingRecruitmentResult;
 import gov.hhs.usas.rest.report.service.AppointmentReportService;
+import gov.hhs.usas.rest.report.service.CdcRecruitmentReportService;
 import gov.hhs.usas.rest.report.service.Properties;
 import gov.hhs.usas.rest.report.service.RecruitmentReportService;
 
@@ -44,6 +46,9 @@ public class UsasRESTController
 	private AppointmentReportService appointmentService;
 	@Autowired
 	private RecruitmentReportService recruitmentService;
+	@Autowired
+	private CdcRecruitmentReportService cdcRecruitmentService;
+
 
 	/**
 	 * This method connects to USA Staffing Cognos
@@ -62,6 +67,8 @@ public class UsasRESTController
 			reportPath = properties.getRecruitmentReportPath();
 		else if(reportName.equalsIgnoreCase("appointment"))
 			reportPath = properties.getAppointmentReportPath();
+		else if(reportName.equalsIgnoreCase("cdcrecruitment"))
+			reportPath = properties.getCdcRecruitmentReportPath();
 		else
 			return "Incorrect report name. Correct URL syntax: /usas/report/{reportName}/{requestNumber}";
 		Prompt prompt = new Prompt(properties.getReportPrompt(), requestNumber, requestNumber);
@@ -135,6 +142,37 @@ public class UsasRESTController
 
 		return usasRecruitment;
 	}
+	
+	/**
+	 * This method uses GET request to locate the pre-downloaded
+	 * CDC Recruitment report XML file and transform it to BizFlow
+	 * consumable format when program runs in test mode.
+	 * This method connects to the USA Staffing Cognos Server to
+	 * pull the CDC Recruitment Report for specific Job Request Number and 
+	 * transforms the Cognos dataSet XML format to BizFlow consumable format
+	 * when program runs in production mode.
+	 * @param requestNumber - Job Request Number
+	 * @return USAStaffingCDCRecruitmentResult - BizFlow consumable XML format
+	 */
+	@GetMapping(path = "/reportXML/cdcrecruitment/{requestNumber}", produces = MediaType.APPLICATION_XML_VALUE)
+	public CdcRecruitmentResult getCdcRecruitmentFormData(@PathVariable String requestNumber)
+	{
+		Prompt cdcRecruitmentPrompt = new Prompt(properties.getReportPrompt(), requestNumber, requestNumber);
+		CognosReport cdcRecruitmentReport = new CognosReport(properties.getCdcRecruitmentReportName(), properties.getCdcRecruitmentReportPath(), properties.getReportFormatDataSet(), cdcRecruitmentPrompt);
+
+		CdcRecruitmentResult cdcRecruitment = new CdcRecruitmentResult();
+
+		if(properties.getProgramMode().equalsIgnoreCase(properties.getTestMode())){
+			String reportPath = properties.getCdcRecruitmentFileLocation() + File.separator + requestNumber + ".xml";
+			log.info("Using XML report for CDC Recruitment "+ reportPath + " for transformation.");
+			cdcRecruitment = cdcRecruitmentService.parseReportFromFile(reportPath);
+		}else{
+			log.info("Connecting to USAS - Cognos Server to get " + properties.getCdcRecruitmentReportName() + " report.");
+			cdcRecruitment = cdcRecruitmentService.parseReportFromUSASResponse(this.client.processReportDataRequest(cdcRecruitmentReport), requestNumber);
+		}
+
+		return cdcRecruitment;
+	}		
 
 	/**
 	 * This method connects to the USA Staffing Cognos Server to
